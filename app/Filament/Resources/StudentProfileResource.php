@@ -44,13 +44,7 @@ class StudentProfileResource extends Resource
     {
         return $form
             ->schema([
-                TextColumn::make('index')
-                    ->label('No. ')
-                    ->rowIndex(),
-
-
                 Grid::make()->schema([
-
                     FileUpload::make('photo')
                         ->label('Foto Siswa')
                         ->image()
