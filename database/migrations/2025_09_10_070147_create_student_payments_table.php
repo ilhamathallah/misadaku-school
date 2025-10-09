@@ -16,7 +16,8 @@ return new class extends Migration
             $table->foreignId('student_id')->constrained('users')->onDelete('cascade');
             // $table->foreignId('discount_id')->nullable()->constrained('student_discounts')->nullOnDelete();
             $table->unsignedBigInteger('discount_id')->nullable();
-            $table->foreignId('bill_id');
+            // $table->foreignId('bill_id')->nullable()->constrained()->cascadeOnDelete();
+            $table->json('bill_ids')->nullable(); // untuk simpan banyak id tagihan
             // $table->date('payment_date');
             $table->enum('method', ['Transfer', 'Cash']);
             $table->integer('total_amount')->default(0);

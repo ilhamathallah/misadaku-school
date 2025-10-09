@@ -19,7 +19,8 @@ class FinanceCategory extends Model
     ];
 
     protected $casts = [
-        'classroom_ids' => 'array', // ini penting!
+        'classroom_ids' => 'array',
+        'bulan' => 'array',
     ];
 
     public function classroom()

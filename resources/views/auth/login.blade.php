@@ -24,7 +24,7 @@
 
         <div class="mt-4">
             <label for="email" class="block text-sm font-medium text-gray-600">Email</label>
-            <x-text-input id="email" name="email" type="email" class="block w-full mt-1"
+            <x-text-input id="email" name="email" type="email" class="block w-full mt-1  px-3 py-2 pr-10"
                 placeholder="{{ __('Email') }}" :value="old('email')" required autofocus autocomplete="username" />
             <x-input-error :messages="$errors->get('email')" class="mt-2" />
         </div>

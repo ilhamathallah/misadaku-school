@@ -58,7 +58,7 @@ class ClassroomResource extends Resource
                     'SMP' => 7,
                     'SMA' => 10,
                 })->required(),
-                TextInput::make('name')->label('Nama Kelas')->maxLength(255)->placeholder('Nama Kelas')->columnSpanFull(),
+                TextInput::make('name')->label('Nama Kelas')->maxLength(255)->placeholder('Nama Kelas')->columnSpanFull()->required(),
                 Toggle::make('isSMK')->visible(fn(Get $get) => $get('jenjang') === 'SMA')->label('SMK')->default(false),
             ]);
     }

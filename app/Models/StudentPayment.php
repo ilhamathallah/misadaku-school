@@ -3,8 +3,8 @@
 namespace App\Models;
 
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Database\Eloquent\Model;
-use App\Filament\Resources\StudentPaymentResource;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class StudentPayment extends Model
@@ -14,7 +14,7 @@ class StudentPayment extends Model
     protected $fillable = [
         'student_id',
         'discount_id',
-        'bill_id',
+        'bill_ids',
         'method',
         'total_amount',
         'paid_amount',
@@ -28,37 +28,8 @@ class StudentPayment extends Model
     protected $casts = [
         'payment_date' => 'date',
         'paid_amount' => 'integer',
+        'bill_ids' => 'array',
     ];
-
-    public function getTerbilangAttribute()
-    {
-        return $this->numberToWords($this->total_amount) . ' rupiah';
-    }
-
-    private function numberToWords($number)
-    {
-        $units = ["", "satu", "dua", "tiga", "empat", "lima", "enam", "tujuh", "delapan", "sembilan", "sepuluh", "sebelas"];
-
-        if ($number < 12) {
-            return $units[$number];
-        } elseif ($number < 20) {
-            return $this->numberToWords($number - 10) . " belas";
-        } elseif ($number < 100) {
-            return $this->numberToWords(intval($number / 10)) . " puluh " . $this->numberToWords($number % 10);
-        } elseif ($number < 200) {
-            return "seratus " . $this->numberToWords($number - 100);
-        } elseif ($number < 1000) {
-            return $this->numberToWords(intval($number / 100)) . " ratus " . $this->numberToWords($number % 100);
-        } elseif ($number < 2000) {
-            return "seribu " . $this->numberToWords($number - 1000);
-        } elseif ($number < 1000000) {
-            return $this->numberToWords(intval($number / 1000)) . " ribu " . $this->numberToWords($number % 1000);
-        } elseif ($number < 1000000000) {
-            return $this->numberToWords(intval($number / 1000000)) . " juta " . $this->numberToWords($number % 1000000);
-        } else {
-            return "jumlah terlalu besar";
-        }
-    }
 
     public function student()
     {
@@ -70,67 +41,95 @@ class StudentPayment extends Model
         return $this->belongsTo(StudentDiscount::class, 'discount_id');
     }
 
-    public function bill()
+    public function studentProfile()
     {
-        return $this->belongsTo(Bill::class, 'bill_id');
+        return $this->belongsTo(StudentProfile::class, 'student_profile_id');
+    }
+
+    // BUKAN RELASI, ini accessor yang aman
+    public function getBillsAttribute()
+    {
+        $ids = $this->bill_ids;
+
+        if (is_null($ids)) {
+            return collect();
+        }
+
+        if (!is_array($ids)) {
+            $ids = json_decode($ids, true);
+        }
+
+        if (empty($ids)) {
+            return collect();
+        }
+
+        return Bill::whereIn('id', $ids)->get();
     }
 
     public function getStatusAttribute()
     {
-        return $this->bill?->status ?? 'Belum Lunas';
+        if (empty($this->bill_ids)) {
+            return 'Belum Lunas';
+        }
+
+        $bills = $this->bills;
+        $totalTagihan = $bills->sum('amount');
+        $totalBayar = (int) $this->paid_amount;
+
+        if ($totalBayar === 0) return 'Belum Lunas';
+        if ($totalBayar < $totalTagihan) return 'Kurang';
+        if ($totalBayar == $totalTagihan) return 'Lunas';
+        if ($totalBayar > $totalTagihan) return 'Lebih';
+
+        return 'Belum Lunas';
     }
 
-    protected static function booted()
+    public function getDueDateAttribute()
     {
-        static::creating(function ($payment) {
-            $bill = $payment->bill;
-            if (!$bill) return;
-
-            $categoryIds = $bill->category_ids ?? [];
-
-            $financeCategory = \App\Models\FinanceCategory::whereIn('id', $categoryIds)->first();
-            if (!$financeCategory) return;
-
-            $kode = $financeCategory->kode;
-            $tahunAjaran = $financeCategory->tahun_ajaran;
-            $bulanMap = [
-                'januari' => '01',
-                'februari' => '02',
-                'maret' => '03',
-                'april' => '04',
-                'mei' => '05',
-                'juni' => '06',
-                'juli' => '07',
-                'agustus' => '08',
-                'september' => '09',
-                'oktober' => '10',
-                'november' => '11',
-                'desember' => '12',
-            ];
-
-            $bulan = strtolower($financeCategory->bulan);
-            $bulanAngka = $bulanMap[$bulan] ?? '00'; // fallback jika bulan tidak valid
-
-            // Hitung jumlah pembayaran sebelumnya dengan kategori ini
-            $jumlahPembayaran = self::whereHas('bill', function ($query) use ($categoryIds) {
-                $query->whereJsonContains('category_ids', $categoryIds);
-            })->count();
-
-            $nomorUrut = str_pad($jumlahPembayaran + 1, 4, '0', STR_PAD_LEFT);
-
-            $receiptNumber = "KW/{$kode}/{$tahunAjaran}/{$bulanAngka}/{$nomorUrut}";
-
-            $payment->receipt_number = $receiptNumber;
-        });
+        return $this->bills->min('tanggal_jatuh_tempo');
     }
+    
 
     public function getSisaKekuranganAttribute()
     {
         return max(($this->total_amount ?? 0) - ($this->paid_amount ?? 0), 0);
     }
 
-    public function studentProfile()
+    protected static function booted()
     {
-        return $this->belongsTo(\App\Models\StudentProfile::class, 'student_profile_id');
+        static::creating(function ($payment) {
+            if (empty($payment->receipt_number)) {
+                $payment->receipt_number = 'KW-' . now()->format('Ymd') . '-' . strtoupper(Str::random(5));
+            }
+        });
+
+        static::saved(function ($payment) {
+            $billIds = $payment->bill_ids ?? [];
+
+            if (!is_array($billIds)) {
+                $billIds = json_decode($billIds, true) ?? [];
+            }
+
+            foreach ($billIds as $billId) {
+                $bill = Bill::find($billId);
+                if (!$bill) continue;
+
+                $totalPaid = StudentPayment::whereJsonContains('bill_ids', $billId)->sum('paid_amount');
+
+                $newStatus = 'Belum Lunas';
+                if ($totalPaid === 0) {
+                    $newStatus = 'Belum Lunas';
+                } elseif ($totalPaid < $bill->amount) {
+                    $newStatus = 'Kurang';
+                } else {
+                    $newStatus = 'Lunas';
+                }
+
+                DB::table('bills')->where('id', $billId)->update([
+                    'status' => $newStatus,
+                    'updated_at' => now(),
+                ]);
+            }
+        });
     }
 }

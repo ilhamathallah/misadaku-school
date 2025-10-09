@@ -2,17 +2,17 @@
 
 namespace App\Filament\Resources;
 
-use Dom\Text;
 use Filament\Forms;
 use App\Models\Bill;
 use Filament\Tables;
 use Filament\Forms\Get;
 use Filament\Forms\Set;
 use Filament\Forms\Form;
+use App\Models\Classroom;
 use Filament\Tables\Table;
 use Illuminate\Support\Str;
+use App\Models\FinanceCategory;
 use Filament\Resources\Resource;
-use Illuminate\Support\HtmlString;
 use Filament\Tables\Filters\Filter;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Toggle;
@@ -21,8 +21,6 @@ use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\DatePicker;
 use Illuminate\Database\Eloquent\Builder;
 use App\Filament\Resources\BillResource\Pages;
-use Illuminate\Database\Eloquent\SoftDeletingScope;
-use App\Filament\Resources\BillResource\RelationManagers;
 
 class BillResource extends Resource
 {
@@ -39,11 +37,10 @@ class BillResource extends Resource
     {
         return $form
             ->schema([
-                
                 TextInput::make('nama_tagihan')
                     ->required()
                     ->label('Nama Tagihan')
-                    ->helperText(new HtmlString('Pastikan nama tagihan <strong>akurat</strong>'))
+                    ->helperText('Pastikan nama tagihan akurat')
                     ->reactive()
                     ->afterStateUpdated(fn($state, Set $set) => $set('nama_tagihan', Str::title($state))),
 
@@ -76,35 +73,39 @@ class BillResource extends Resource
                 Select::make('category_ids')
                     ->label('Kategori Pemasukan')
                     ->options(function () {
-                        return \App\Models\FinanceCategory::where('type', 'income')
-                            ->with('classroom')
+                        return FinanceCategory::where('type', 'income')
                             ->get()
                             ->mapWithKeys(function ($category) {
-                                $classroom = $category->classroom;
-                                $classroomName = $classroom
-                                    ? Str::title("{$classroom->kelas} {$classroom->name}")
-                                    : 'Semua Kelas';
+                                // classroom_ids bentuknya array (json)
+                                $ids = is_array($category->classroom_ids)
+                                    ? $category->classroom_ids
+                                    : (json_decode($category->classroom_ids, true) ?? []);
+
+                                // ambil nama kelas dari ids
+                                $classroomNames = Classroom::whereIn('id', $ids)
+                                    ->get()
+                                    ->map(fn($c) => "{$c->kelas} {$c->name}")
+                                    ->implode(', ');
 
                                 return [
-                                    $category->id => Str::title("{$category->name} - {$classroomName}")
+                                    $category->id => Str::title("{$category->name} - {$classroomNames}"),
                                 ];
                             })
                             ->toArray();
                     })
                     ->multiple()
-                    ->searchable(),
+                    ->searchable()
+                    ->reactive()
+                    ->afterStateUpdated(function ($state, Set $set) {
+                        $totalAmount = FinanceCategory::whereIn('id', $state)->sum('amount');
+                        $set('amount', $totalAmount);
+                    }),
 
                 TextInput::make('amount')
                     ->label('Total Pembayaran')
                     ->numeric()
-                    ->live()
-                    ->reactive()
-                    ->disabled()
+                    ->disabled() // Disable the field to prevent manual input
                     ->dehydrated()
-                    ->required(),
-
-                Toggle::make('status')
-                    ->label('Pembayaran Lunas')
                     ->required(),
             ]);
     }
@@ -114,8 +115,8 @@ class BillResource extends Resource
         return $table
             ->columns([
                 TextColumn::make('index')
-                ->label('No. ')
-                ->rowIndex(),
+                    ->label('No. ')
+                    ->rowIndex(),
                 TextColumn::make('studentProfile.user.name')
                     ->label('Siswa')
                     ->sortable()
@@ -131,10 +132,16 @@ class BillResource extends Resource
                         }
                         $kelas = $classroom->kelas;
                         $namaKelas = $classroom->name;
-                        return Str::title("{$kelas} {$namaKelas}");
+                        return Str::title("{$kelas}{$namaKelas}");
                     })
                     ->sortable()
-                    ->searchable(),
+                    ->searchable(query: function (Builder $query, string $search) {
+                        // biar search bisa lewat nama kelas
+                        $query->whereHas('studentProfile.classroom', function ($q) use ($search) {
+                            $q->where('kelas', 'like', "%{$search}%")
+                                ->orWhere('name', 'like', "%{$search}%");
+                        });
+                    }),
 
                 TextColumn::make('nama_tagihan')
                     ->label('Nama Tagihan')
@@ -144,8 +151,6 @@ class BillResource extends Resource
 
                 TextColumn::make('kategori')
                     ->label('Kategori')
-                    ->sortable()
-                    // ->searchable()
                     ->getStateUsing(
                         fn($record) =>
                         \App\Models\FinanceCategory::whereIn('id', $record->category_ids)
@@ -162,10 +167,14 @@ class BillResource extends Resource
                 TextColumn::make('status')
                     ->label('Status Pembayaran')
                     ->badge()
-                    ->searchable()
                     ->sortable()
-                    ->formatStateUsing(fn($state) => $state ? 'Lunas' : 'Belum Lunas')
-                    ->color(fn($state) => $state ? 'success' : 'danger'),
+                    ->getStateUsing(fn($record) => $record->status) // ambil accessor, bukan field database
+                    ->color(fn($state) => match ($state) {
+                        'Lunas' => 'success',
+                        'Kurang' => 'warning',
+                        'Belum Lunas' => 'danger',
+                        default => 'gray',
+                    }),
 
                 TextColumn::make('tanggal_jatuh_tempo')
                     ->label('Tanggal Jatuh Tempo')
@@ -177,9 +186,25 @@ class BillResource extends Resource
                 Tables\Filters\SelectFilter::make('status')
                     ->label('Status Pembayaran')
                     ->options([
-                        1 => 'Lunas',
-                        0 => 'Belum Lunas',
+                        'Belum Lunas' => 'Belum Lunas',
+                        'Kurang' => 'Kurang',
+                        'Lunas' => 'Lunas',
                     ]),
+
+                Tables\Filters\SelectFilter::make('classroom_id')
+                    ->label('Kelas')
+                    ->options(
+                        \App\Models\Classroom::all()->mapWithKeys(fn($c) => [
+                            $c->id => "{$c->kelas}{$c->name}"
+                        ])->toArray()
+                    )
+                    ->query(function (Builder $query, array $data) {
+                        if (!empty($data['value'])) {
+                            $query->whereHas('studentProfile.classroom', function ($q) use ($data) {
+                                $q->where('id', $data['value']);
+                            });
+                        }
+                    }),
 
                 Tables\Filters\SelectFilter::make('category_ids')
                     ->label('Kategori')
@@ -208,6 +233,7 @@ class BillResource extends Resource
                             ->when($data['from'], fn($q) => $q->whereDate('created_at', '>=', $data['from']))
                             ->when($data['until'], fn($q) => $q->whereDate('created_at', '<=', $data['until']));
                     }),
+
             ])
             ->actions([
                 // Tables\Actions\EditAction::make(),
@@ -216,7 +242,7 @@ class BillResource extends Resource
                     ->tooltip('Riwayat')
                     ->icon('heroicon-o-clock')
                     ->color('info'),
-                Tables\Actions\ViewAction::make()
+                Tables\Actions\DeleteAction::make()
                     ->label('')
                     ->tooltip('Hapus')
                     ->icon('heroicon-s-trash')
@@ -231,17 +257,13 @@ class BillResource extends Resource
 
     public static function getRelations(): array
     {
-        return [
-            //
-        ];
+        return [];
     }
 
     public static function getPages(): array
     {
         return [
             'index' => Pages\ListBills::route('/'),
-            // 'create' => Pages\CreateBill::route('/create'),
-            // 'edit' => Pages\EditBill::route('/{record}/edit'),
         ];
     }
 }

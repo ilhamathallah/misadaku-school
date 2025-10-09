@@ -15,18 +15,11 @@ return new class extends Migration
             $table->id();
 
             $table->foreignId('student_profile_id')->constrained('student_profiles')->onDelete('cascade');
-
-            // Simpan ID kategori sebagai array JSON
             $table->json('category_ids')->constrained('finance_categories')->onDelete('cascade');
-
             $table->string('nama_tagihan'); // Contoh: SPP Juli + Uang Seragam
             $table->integer('amount'); // total tagihan (dari kategori)
-
             $table->date('tanggal_jatuh_tempo');
-
-            $table->boolean('status');
-
-
+            $table->enum('status', ['Belum Lunas', 'Kurang', 'Lunas'])->default('Belum Lunas');
             $table->timestamps();
         });
     }

@@ -10,6 +10,7 @@ use Filament\Forms\Get;
 use Filament\Forms\Set;
 use Filament\Forms\Form;
 
+use App\Models\Classroom;
 use Filament\Tables\Table;
 use Illuminate\Support\Str;
 use App\Models\StudentPayment;
@@ -24,6 +25,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\DatePicker;
 use Illuminate\Database\Eloquent\Builder;
+use Filament\Forms\Components\CheckboxList;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 use App\Filament\Resources\StudentPaymentResource\Pages;
@@ -59,7 +61,7 @@ class StudentPaymentResource extends Resource
                                 $name = Str::title($user->name);
 
                                 return [
-                                    $user->id => "{$name} - {$kelas} {$namaKelas}"
+                                    $user->id => "{$name} - {$kelas}{$namaKelas}"
                                 ];
                             })
                             ->toArray()
@@ -67,50 +69,78 @@ class StudentPaymentResource extends Resource
                     ->searchable()
                     ->required(),
 
-                Select::make('bill_id')
+                Select::make('bill_ids')
                     ->label('Tagihan Yang Dibayar')
-                    ->reactive()
-                    ->live(onBlur: true)
                     ->options(function (Get $get) {
                         $studentId = $get('student_id');
-                        if (!$studentId) return [];
-                        $profile = \App\Models\StudentProfile::where('user_id', $studentId)->first();
-                        if (!$profile) return [];
-                        return \App\Models\Bill::where('student_profile_id', $profile->id)
-                            ->get()
-                            ->filter(fn($bill) => !$bill->payments()->latest()->first() || $bill->payments()->latest()->first()->sum === 'kurang')
-                            ->mapWithKeys(fn($bill) => [
-                                $bill->id => Str::title($bill->nama_tagihan) . ' - Rp ' . number_format($bill->amount)
-                            ]);
-                    }),
+                        $selectedBillIds = $get('bill_ids') ?? [];
+
+                        $bills = collect();
+
+                        // Ambil bill dari student_id (normal)
+                        if ($studentId) {
+                            $profile = \App\Models\StudentProfile::where('user_id', $studentId)->first();
+                            if ($profile) {
+                                $bills = $bills->merge(
+                                    \App\Models\Bill::where('student_profile_id', $profile->id)->get()
+                                );
+                            }
+                        }
+
+                        // Tambahin bill yang udah dipilih juga (biar gak ilang di edit)
+                        if (!empty($selectedBillIds)) {
+                            $ids = is_array($selectedBillIds) ? $selectedBillIds : json_decode($selectedBillIds, true);
+                            $bills = $bills->merge(
+                                \App\Models\Bill::whereIn('id', $ids)->get()
+                            );
+                        }
+
+                        // Hapus duplikat
+                        $bills = $bills->unique('id');
+
+                        // Generate options
+                        $options = [];
+                        foreach ($bills as $bill) {
+                            $totalPaid = \App\Models\StudentPayment::whereJsonContains('bill_ids', (string) $bill->id)
+                                ->orWhereJsonContains('bill_ids', (int) $bill->id)
+                                ->sum('paid_amount');
+
+                            if ($totalPaid < $bill->amount || in_array($bill->id, (array) $selectedBillIds)) {
+                                $options[$bill->id] = \Illuminate\Support\Str::title($bill->nama_tagihan)
+                                    . ' - Total: Rp ' . number_format($bill->amount, 0, ',', '.');
+                            }
+                        }
+
+                        return $options;
+                    })
+                    ->multiple()
+                    ->searchable()
+                    ->reactive()
+                    ->afterStateUpdated(fn(Set $set, Get $get) => self::updateTotalAmount($get('bill_ids'), $get('discount_id'), $set))
+                    ->required(),
 
                 Select::make('discount_id')
                     ->label('Diskon (jika ada)')
                     ->options(\App\Models\StudentDiscount::pluck('name', 'id'))
                     ->reactive()
-                    ->live(onBlur: true)
-                    ->afterStateUpdated(
-                        fn(Set $set, Get $get) =>
-                        \App\Filament\Resources\StudentPaymentResource::updateTotalAmount(
-                            $get('bill_id'),
-                            $get('discount_id'),
-                            $set
-                        )
-                    ),
+                    ->afterStateUpdated(fn(Set $set, Get $get) => self::updateTotalAmount($get('bill_ids'), $get('discount_id'), $set)),
 
                 TextInput::make('total_amount')
                     ->label('Total Pembayaran')
                     ->numeric()
-                    ->live()
-                    ->reactive()
-                    ->readOnly()  // Hanya bisa dibaca, karena ini dihitung berdasarkan diskon
+                    ->readOnly()
                     ->dehydrated()
-                    ->prefix('Rp.')
-                    ->hint(function (callable $get) {
-                        $billId = $get('bill_id');
-                        if (!$billId) return null;
-                        $bill = \App\Models\Bill::find($billId);
-                        return $bill ? 'Original bill: Rp ' . number_format($bill->amount, 0, ',', '.') : null;
+                    ->prefix('Rp. ')
+                    ->hint(function (Get $get) {
+                        $billIds = $get('bill_ids');
+                        if (empty($billIds)) return null;
+
+                        $billIds = is_array($billIds) ? $billIds : [$billIds];
+                        $details = \App\Models\Bill::whereIn('id', $billIds)->get()
+                            ->map(fn($bill) => "{$bill->nama_tagihan}: Rp " . number_format($bill->amount, 0, ',', '.'))
+                            ->implode(' | ');
+
+                        return new HtmlString("<small>{$details}</small>");
                     }),
 
                 TextInput::make('paid_amount')
@@ -162,6 +192,7 @@ class StudentPaymentResource extends Resource
             ]);
     }
 
+
     public static function table(Table $table): Table
     {
         return $table
@@ -179,39 +210,38 @@ class StudentPaymentResource extends Resource
                     ->label('Kelas')
                     ->getStateUsing(function ($record) {
                         $classroom = $record->student?->studentProfile?->classroom;
+                        if (!$classroom) return '-';
+                        return Str::title("{$classroom->kelas}{$classroom->name}");
+                    })
+                    ->sortable(),
 
-                        if (!$classroom) {
+                TextColumn::make('bill_names')
+                    ->label('Nama Tagihan')
+                    ->getStateUsing(function ($record) {
+                        if (empty($record->bill_ids)) {
                             return '-';
                         }
 
-                        $kelas = Str::title($classroom->kelas ?? '-');
-                        $jenjang = Str::title($classroom->jenjang ?? '-');
-                        $namaKelas = Str::title($classroom->name ?? '-');
+                        $billIds = is_array($record->bill_ids) ? $record->bill_ids : json_decode($record->bill_ids, true);
+                        $bills = \App\Models\Bill::whereIn('id', $billIds)->get();
 
-                        return "{$kelas} {$namaKelas}";
+                        return $bills->map(function ($bill) {
+                            $categories = \App\Models\FinanceCategory::whereIn('id', $bill->category_ids ?? [])
+                                ->pluck('name')
+                                ->map(fn($name) => \Illuminate\Support\Str::title($name))
+                                ->implode(', ');
+
+                            $classroom = optional($bill->studentProfile?->classroom);
+                            $classroomName = $classroom
+                                ? \Illuminate\Support\Str::title("{$classroom->kelas}{$classroom->name}")
+                                : 'Tanpa Kelas';
+
+                            return \Illuminate\Support\Str::title($bill->nama_tagihan) . ' - ' . $categories . ' - ' . $classroomName;
+                        })->implode(' | ');
                     })
-                    ->searchable()
-                    ->sortable(),
-
-                TextColumn::make('bill.nama_tagihan')
-                    ->label('Nama Tagihan')
-                    ->formatStateUsing(function ($state, $record) {
-                        $categories = \App\Models\FinanceCategory::whereIn('id', $record->bill->category_ids ?? [])
-                            ->pluck('name')
-                            ->map(fn($name) => Str::title($name))
-                            ->implode(', ');
-
-                        $classroom = optional($record->bill->studentProfile->classroom);
-                        $classroomName = $classroom
-                            ? Str::title("{$classroom->kelas} {$classroom->jenjang} {$classroom->name}")
-                            : 'Tanpa Kelas';
-
-                        return Str::title($record->bill->nama_tagihan) . ' - ' . $categories . ' - ' . $classroomName;
-                    })
-                    ->limit(30)
+                    ->limit(40)
                     ->tooltip(fn($state) => $state)
-                    ->searchable()
-                    ->sortable(),
+                    ->searchable(),
                 TextColumn::make('total_amount')
                     ->money('Rp.')
                     ->searchable()
@@ -225,7 +255,7 @@ class StudentPaymentResource extends Resource
                 TextColumn::make('sisa_kekurangan')
                     ->label('Kekurangan')
                     ->money('Rp.')
-                    ->searchable()
+                    // ->searchable()
                     ->getStateUsing(function ($record) {
                         return max($record->total_amount - $record->paid_amount, 0);
                     })
@@ -252,7 +282,7 @@ class StudentPaymentResource extends Resource
                     ->label('No. Kwitansi')
                     ->sortable()
                     ->searchable(),
-                TextColumn::make('bill.tanggal_jatuh_tempo')
+                TextColumn::make('due_date')
                     ->label('Jatuh Tempo')
                     ->date()
                     ->sortable()
@@ -278,6 +308,27 @@ class StudentPaymentResource extends Resource
                         'Transfer' => 'Transfer',
                         'Cash' => 'Cash',
                     ]),
+
+                Tables\Filters\SelectFilter::make('classroom_id')
+                    ->label('Kelas')
+                    ->searchable()
+                    ->options(function () {
+                        return \App\Models\Classroom::all()
+                            ->mapWithKeys(function ($classroom) {
+                                $kelas = Str::title($classroom->kelas ?? '-');
+                                // $jenjang = Str::title($classroom->jenjang ?? '-');
+                                $namaKelas = Str::title($classroom->name ?? '-');
+                                return [$classroom->id => "{$kelas}{$namaKelas}"];
+                            })->toArray();
+                    })
+                    ->query(function (Builder $query, array $data) {
+                        if (!empty($data['value'])) {
+                            $query->whereHas('student.studentProfile', function ($q) use ($data) {
+                                $q->where('classroom_id', $data['value']);
+                            });
+                        }
+                    }),
+
             ])
             ->actions([
                 Tables\Actions\ViewAction::make()
@@ -321,11 +372,9 @@ class StudentPaymentResource extends Resource
                                 $cleanNumber = '62' . substr($cleanNumber, 1);
                             }
 
-                            // Data kelas
                             $classroom = $record->student->studentProfile->classroom;
                             $kelasLengkap = "{$classroom->kelas} {$classroom->jenjang} {$classroom->name}";
 
-                            // Format pesan
                             $message = "Assalamu'alaikum Bapak/Ibu,\n\n" .
                                 "Kami informasikan bahwa pembayaran atas nama siswa:\n" .
                                 "Nama Siswa       : {$record->student->name}\n" .
@@ -343,9 +392,9 @@ class StudentPaymentResource extends Resource
 
             ])
             ->bulkActions([
-                // Tables\Actions\BulkActionGroup::make([
-                //     Tables\Actions\DeleteBulkAction::make(),
-                // ]),
+                Tables\Actions\BulkActionGroup::make([
+                    Tables\Actions\DeleteBulkAction::make(),
+                ]),
             ]);
     }
 
@@ -360,13 +409,8 @@ class StudentPaymentResource extends Resource
     {
         return [
             'index' => Pages\ListStudentPayments::route('/'),
-            // 'create' => Pages\CreateStudentPayment::route('/create'),
-            // 'view' => Pages\ViewStudentPayment::route('/{record}'),
-            // 'edit' => Pages\EditStudentPayment::route('/{record}/edit'),
         ];
     }
-
-    // ============================================
 
     public static function calculateAmount(int $billId, ?int $discountId): float
     {
@@ -375,7 +419,6 @@ class StudentPaymentResource extends Resource
 
         $billAmount = $bill->amount;
 
-        // Apply discount
         if ($discountId) {
             $discount = StudentDiscount::find($discountId);
             if ($discount && $discount->percentage) {
@@ -383,41 +426,49 @@ class StudentPaymentResource extends Resource
             }
         }
 
-        // Subtract all previous payments
-        $paid = StudentPayment::where('bill_id', $billId)->sum('paid_amount');
+        $paid = StudentPayment::whereJsonContains('bill_ids', $billId)->sum('paid_amount');
 
         return max($billAmount - $paid, 0);
     }
 
-    public static function updateTotalAmount($billId, $discountId, $set)
+    public static function updateTotalAmount($billIds, $discountId, $set)
     {
-        $bill = Bill::find($billId);
-        if (!$bill) {
+        if (empty($billIds)) {
             $set('total_amount', 0);
+            $set('paid_amount', 0);
             return;
         }
 
-        $billAmount = $bill->amount;
+        $billIds = is_array($billIds) ? $billIds : [$billIds];
 
-        // Apply discount
-        if ($discountId) {
-            $discount = StudentDiscount::find($discountId);
-            if ($discount && $discount->percentage) {
-                $billAmount -= ($billAmount * ($discount->percentage / 100));
+        $total = 0;
+        foreach ($billIds as $billId) {
+            $bill = \App\Models\Bill::find($billId);
+            if (!$bill) continue;
+
+            $billAmount = $bill->amount;
+
+            // kalau ada diskon, kurangi sesuai persen
+            if ($discountId) {
+                $discount = \App\Models\StudentDiscount::find($discountId);
+                if ($discount && $discount->percentage) {
+                    $billAmount -= ($billAmount * ($discount->percentage / 100));
+                }
             }
+
+            // cek kalau sudah ada pembayaran sebelumnya
+            $paid = \App\Models\StudentPayment::whereJsonContains('bill_ids', $billId)->sum('paid_amount');
+            $remainingDebt = max($billAmount - $paid, 0);
+
+            $total += $remainingDebt;
         }
 
-        // Calculate remaining debt
-        $paid = StudentPayment::where('bill_id', $billId)->sum('paid_amount');
-        $remainingDebt = max($billAmount - $paid, 0);
+        // set total ke total_amount
+        $set('total_amount', $total);
 
-        // ✅ This now sets total_amount to the remaining debt
-        $set('total_amount', $remainingDebt);
-
-        // ❌ Don’t overwrite paid_amount fully
-        // Instead: only prefill if no payments exist yet
-        if ($paid == 0) {
-            $set('paid_amount', $remainingDebt);
+        // default isi paid_amount = total, tapi user tetap bisa ubah
+        if ($total > 0) {
+            $set('paid_amount', $total);
         }
     }
 }

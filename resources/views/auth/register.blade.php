@@ -25,7 +25,7 @@
         <!-- Name -->
         <div>
             <label for="name" class="block text-sm font-medium text-gray-600">Name</label>
-            <x-text-input id="name" class="block mt-1 w-full" type="text" name="name"
+            <x-text-input id="name" class="block mt-1 w-full px-3 py-2 pr-10" type="text" name="name"
                 placeholder="{{ __('Name') }}" :value="old('name')" required autofocus autocomplete="name" />
             <x-input-error :messages="$errors->get('name')" class="mt-2" />
         </div>
@@ -33,7 +33,7 @@
         <!-- Email Address -->
         <div class="mt-4">
             <label for="email" class="block text-sm font-medium text-gray-600">Email</label>
-            <x-text-input id="email" class="block mt-1 w-full" type="email" name="email"
+            <x-text-input id="email" class="block mt-1 w-full px-3 py-2 pr-10" type="email" name="email"
                 placeholder="{{ __('Email') }}" :value="old('email')" required autocomplete="username" />
             <x-input-error :messages="$errors->get('email')" class="mt-2" />
         </div>

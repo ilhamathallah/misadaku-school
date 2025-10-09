@@ -63,7 +63,9 @@ class StudentProfileResource extends Resource
                             }
 
                             return $query->get()
-                                ->mapWithKeys(fn($user) => [$user->id => $user->name ?? '-'])
+                                ->mapWithKeys(fn($user) => [
+                                    $user->id => ucwords(strtolower($user->name ?? '-'))  // Menambahkan ucwords untuk kapitalisasi
+                                ])
                                 ->toArray();
                         })
                         ->searchable()
@@ -72,7 +74,7 @@ class StudentProfileResource extends Resource
                     Select::make('classroom_id')
                         ->label('Kelas')
                         ->relationship('classroom', 'name')
-                        ->getOptionLabelFromRecordUsing(fn($record) => $record ? "{$record->kelas} {$record->name} {$record->jenjang} " : '-'),
+                        ->getOptionLabelFromRecordUsing(fn($record) => $record ? "{$record->kelas}  {$record->name} " : '-'),
                     TextInput::make('nis')
                         ->label('NIS')
                         ->numeric()
@@ -125,8 +127,7 @@ class StudentProfileResource extends Resource
                         // Ambil data dari relasi classroom
                         $kelas = $record->classroom;
                         if ($kelas) {
-                            return "{$kelas->kelas} 
-                            {$kelas->name}";
+                            return "{$kelas->kelas}{$kelas->name}";
                         }
                         return '-'; // Jika tidak ada data classroom
                     })->searchable()->sortable(),
@@ -141,9 +142,11 @@ class StudentProfileResource extends Resource
                 BadgeColumn::make('is_active')->label('Status Siswa')->formatStateUsing(fn($state) => $state ? 'Aktif' : 'Tidak')->color(fn($state) => $state ? 'success' : 'danger')->searchable()->sortable(),
             ])
             ->filters([
-                // Tables\Filters\SelectFilter::make('classroom_id')
-                //     ->label('Kelas')
-                //     ->relationship('classroom', 'kelas'),
+                Tables\Filters\SelectFilter::make('classroom_id')
+                    ->label('Kelas')
+                    ->relationship('classroom', 'name', fn($query) => $query->orderBy('kelas')->orderBy('name'))
+                    ->getOptionLabelFromRecordUsing(fn($record) => "{$record->kelas} {$record->name}"),
+                    
 
                 Tables\Filters\SelectFilter::make('gender')
                     ->label('Jenis Kelamin')
@@ -151,17 +154,6 @@ class StudentProfileResource extends Resource
                         'L' => 'Laki-laki',
                         'P' => 'Perempuan',
                     ]),
-
-                // Tables\Filters\SelectFilter::make('generation')
-                //     ->label('Angkatan')
-                //     ->options(
-                //         fn() => \App\Models\StudentProfile::query()
-                //             ->select('generation')
-                //             ->distinct()
-                //             ->pluck('generation', 'generation')
-                //             ->sortDesc()
-                //     ),
-
                 Tables\Filters\SelectFilter::make('is_active')
                     ->label('Status Siswa')
                     ->options([

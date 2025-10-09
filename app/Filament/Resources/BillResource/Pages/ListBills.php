@@ -3,17 +3,15 @@
 namespace App\Filament\Resources\BillResource\Pages;
 
 use App\Models\Bill;
-use BillReportExport;
 use Filament\Actions;
-use Filament\Forms\Get;
-use Filament\Forms\Set;
 use App\Models\Classroom;
+use Illuminate\Support\Str;
 use Filament\Actions\Action;
-use Maatwebsite\Excel\Excel;
 use App\Models\StudentProfile;
 use App\Models\FinanceCategory;
+use App\Exports\BillReportExport;
 use Filament\Forms\Components\Grid;
-use App\Exports\FinanceReportExport;
+use Maatwebsite\Excel\Facades\Excel;
 use Filament\Forms\Components\Select;
 use App\Filament\Resources\BillResource;
 use Filament\Forms\Components\TextInput;
@@ -52,9 +50,9 @@ class ListBills extends ListRecords
                             ->searchable()
                             ->preload()
                             ->options(
-                                \App\Models\Classroom::all()
+                                Classroom::all()
                                     ->mapWithKeys(fn($record) => [
-                                        $record->id => "{$record->kelas} {$record->name} {$record->jenjang}",
+                                        $record->id => "{$record->kelas} {$record->name}",
                                     ])
                                     ->toArray()
                             )
@@ -62,28 +60,33 @@ class ListBills extends ListRecords
 
                         Select::make('category_ids')
                             ->label('Kategori Pemasukan')
-                            ->multiple()
-                            ->searchable()
                             ->options(function () {
                                 return FinanceCategory::where('type', 'income')
-                                    ->with('classroom')
                                     ->get()
                                     ->mapWithKeys(function ($category) {
-                                        $classroom = $category->classroom;
-                                        $classroomName = $classroom
-                                            ? "{$classroom->kelas} {$classroom->name}"
-                                            : 'Semua Kelas';
+                                        // classroom_ids bentuknya array (json)
+                                        $ids = is_array($category->classroom_ids)
+                                            ? $category->classroom_ids
+                                            : (json_decode($category->classroom_ids, true) ?? []);
+
+                                        // ambil nama kelas dari ids
+                                        $classroomNames = Classroom::whereIn('id', $ids)
+                                            ->get()
+                                            ->map(fn($c) => "{$c->kelas} {$c->name}")
+                                            ->implode(', ');
 
                                         return [
-                                            $category->id => "{$category->name} - {$classroomName}"
+                                            $category->id => Str::title("{$category->name} - {$classroomNames}"),
                                         ];
                                     })
                                     ->toArray();
                             })
-                            ->required()
-                            ->afterStateUpdated(function (Set $set, Get $get) {
-                                $amount = \App\Models\Bill::calculateAmount($get('category_ids'));
-                                $set('amount', (int) $amount);
+                            ->multiple()
+                            ->searchable()
+                            ->reactive()
+                            ->afterStateUpdated(function ($state, $set) {
+                                $totalAmount = FinanceCategory::whereIn('id', $state)->sum('amount');
+                                $set('amount', $totalAmount);
                             }),
 
                         TextInput::make('amount')
@@ -109,9 +112,9 @@ class ListBills extends ListRecords
                                 'nama_tagihan' => $data['nama_tagihan'],
                                 'student_profile_id' => $student->id,
                                 'tanggal_jatuh_tempo' => $data['tanggal_jatuh_tempo'],
-                                'category_ids' => [$category->id],
+                                'category_ids' => [$category->id], // JSON
                                 'amount' => $category->amount,
-                                'status' => false,
+                                'status' => 'Belum Lunas', // default enum
                             ]);
                         }
                     }
@@ -128,9 +131,13 @@ class ListBills extends ListRecords
                 ->form([
                     Select::make('classroom_id')
                         ->label('Kelas')
-                        ->options(\App\Models\Classroom::all()->mapWithKeys(fn($c) => [
-                            $c->id => "{$c->kelas} {$c->name}"
-                        ])->toArray())
+                        ->options(
+                            Classroom::all()
+                                ->mapWithKeys(fn($c) => [
+                                    $c->id => "{$c->kelas} {$c->name}"
+                                ])
+                                ->toArray()
+                        )
                         ->nullable(),
 
                     DatePicker::make('start_date')->label('Dari Tanggal')->nullable(),
@@ -139,8 +146,8 @@ class ListBills extends ListRecords
                 ->action(function (array $data) {
                     $fileName = 'laporan-tagihan-' . now()->format('Y-m-d') . '.xlsx';
 
-                    return \Maatwebsite\Excel\Facades\Excel::download(
-                        new \App\Exports\BillReportExport(
+                    return Excel::download(
+                        new BillReportExport(
                             $data['start_date'] ?? null,
                             $data['end_date'] ?? null,
                             $data['classroom_id'] ?? null
@@ -148,8 +155,7 @@ class ListBills extends ListRecords
                         $fileName
                     );
                 })
-                ->color('success')
-
+                ->color('success'),
         ];
     }
 }

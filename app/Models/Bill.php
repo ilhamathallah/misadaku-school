@@ -17,6 +17,7 @@ class Bill extends Model
 
     protected $casts = [
         'category_ids' => 'array',
+        'tanggal_jatuh_tempo' => 'date',
     ];
 
     public function studentProfile()
@@ -24,9 +25,9 @@ class Bill extends Model
         return $this->belongsTo(StudentProfile::class);
     }
 
-    public function categories()
+    public function payments()
     {
-        return $this->belongsToMany(FinanceCategory::class, 'bill_categories');
+        return StudentPayment::whereJsonContains('bill_ids', $this->id);
     }
 
     public static function calculateAmount(array $categoryIds): int
@@ -41,23 +42,33 @@ class Bill extends Model
         });
     }
 
-    public function payments()
+    public function totalPaid(): int
     {
-        return $this->hasMany(StudentPayment::class, 'bill_id');
+        return (int) StudentPayment::whereJsonContains('bill_ids', $this->id)->sum('paid_amount');
     }
 
-    /**
-     * Accessor untuk status pembayaran (selalu konsisten di web & export)
-     */
-
-    // status di export excel
-    public function getPaymentStatusAttribute()
+    public function refreshStatus(): void
     {
-        $totalBill = $this->amount ?? 0;
-        $totalPaid = $this->payments()->sum('paid_amount');
+        $totalBill = (int) $this->amount;
+        $totalPaid = $this->totalPaid();
 
-        return $totalPaid >= $totalBill ? 'Lunas' : 'Belum Lunas';
+        $status = 'Belum Lunas';
+        if ($totalPaid > 0 && $totalPaid < $totalBill) {
+            $status = 'Kurang';
+        } elseif ($totalPaid >= $totalBill) {
+            $status = 'Lunas';
+        }
+
+        $this->updateQuietly(['status' => $status]);
     }
 
-    
+    public function getStatusRealtimeAttribute(): string
+    {
+        $totalBill = (int) $this->amount;
+        $totalPaid = $this->totalPaid();
+
+        if ($totalPaid === 0) return 'Belum Lunas';
+        if ($totalPaid < $totalBill) return 'Kurang';
+        return 'Lunas';
+    }
 }

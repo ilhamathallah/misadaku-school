@@ -83,23 +83,18 @@ class FinanceCategoryResource extends Resource
                 Select::make('classroom_ids')
                     ->label('Kelas')
                     ->options(function () {
-                        $kelasOptions = \App\Models\Classroom::all()
+                        return \App\Models\Classroom::all()
                             ->mapWithKeys(function ($classroom) {
                                 return [
                                     $classroom->id => "{$classroom->kelas} {$classroom->name}",
                                 ];
                             })
                             ->toArray();
-
-                        return [0 => 'Semua Kelas'] + $kelasOptions;
                     })
                     ->multiple()
                     ->searchable()
                     ->nullable()
                     ->dehydrated(true)
-                    ->dehydrateStateUsing(function ($state) {
-                        return in_array(0, $state ?? []) ? null : $state;
-                    })
                     ->rules(['nullable', 'array']),
 
                 Select::make('bulan')
@@ -132,8 +127,8 @@ class FinanceCategoryResource extends Resource
         return $table
             ->columns([
                 TextColumn::make('index')
-                ->label('No. ')
-                ->rowIndex(),
+                    ->label('No. ')
+                    ->rowIndex(),
                 TextColumn::make('name')
                     ->label('Nama Keuangan')
                     ->searchable()
@@ -156,7 +151,6 @@ class FinanceCategoryResource extends Resource
                     ->money('Rp.'),
                 TextColumn::make('kelas')
                     ->label('Kelas')
-                    ->searchable()
                     ->sortable()
                     ->getStateUsing(function ($record) {
                         $ids = $record->classroom_ids;
@@ -168,7 +162,7 @@ class FinanceCategoryResource extends Resource
                         $classrooms = \App\Models\Classroom::whereIn('id', $ids)->get();
 
                         return $classrooms->map(function ($classroom) {
-                            return "{$classroom->kelas} {$classroom->name}";
+                            return "{$classroom->kelas}{$classroom->name}";
                         })->implode(', ');
                     })
                     ->wrap(),
@@ -195,19 +189,19 @@ class FinanceCategoryResource extends Resource
                         'income' => 'Pemasukan',
                         'expense' => 'Pengeluaran',
                     ]),
-                SelectFilter::make('classroom_id')
+                SelectFilter::make('classroom')
                     ->label('Kelas')
-                    ->options(function () {
-                        return [
-                            null => 'Semua Kelas',
-                        ] + Classroom::all()
-                            ->mapWithKeys(function ($classroom) {
-                                $label = "{$classroom->kelas} {$classroom->jenjang} {$classroom->name}";
-                                return [$classroom->id => $label];
-                            })
-                            ->toArray();
-                    })
-                    ->placeholder('Pilih Kelas'),
+                    ->options(
+                        Classroom::all()->mapWithKeys(fn($c) => [
+                            $c->id => "{$c->kelas} {$c->name}"
+                        ])->toArray()
+                    )
+                    ->query(function (Builder $query, array $data) {
+                        if (!empty($data['value'])) {
+                            $query->whereJsonContains('classroom_ids', (string) $data['value']);
+                        }
+                    }),
+
             ])
             ->actions([
                 Tables\Actions\EditAction::make()

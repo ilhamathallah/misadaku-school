@@ -3,10 +3,10 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Kwitansi - MI Saadatuddarain</title>
+    <title>Kwitansi - Misadaku School</title>
+    <link rel="icon" type="image/png" href="{{ asset('storage/images/misadaku.png') }}">
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* Kertas A6 = 148 x 105 mm */
         @page {
             size: 148mm 105mm;
             margin: 5mm;
@@ -18,7 +18,6 @@
                 margin: 0;
                 padding: 0;
                 font-size: 9px;
-                /* perkecil default font */
                 line-height: 1.2;
             }
 
@@ -33,13 +32,11 @@
 </head>
 
 <body class="bg-gray-100 p-2 print:bg-white print:p-0">
-
     <div class="print-area mx-auto bg-white p-3 border border-gray-800">
 
-        <!-- Kop Sekolah -->
         <div class="flex items-center mb-2">
             <div class="w-12">
-                <img src="{{ asset('storage/images/misadaqu.png') }}" class="h-10 w-auto">
+                <img src="{{ asset('storage/images/misadaku.png') }}" class="h-10 w-auto">
             </div>
             <div class="flex-1 text-center">
                 <h2 class="text-[10px] font-bold uppercase">Madrasah Ibtidaiyah Saadatuddarain</h2>
@@ -51,10 +48,8 @@
 
         <hr class="border-black mb-2">
 
-        <!-- Judul -->
         <h1 class="text-center text-[12px] font-bold mb-6 underline">KWITANSI PEMBAYARAN SISWA</h1>
 
-        <!-- Nomor Kwitansi -->
         <div class="flex items-center mb-1">
             <span class="w-24 text-[9px] font-semibold">No. Kwitansi</span>
             <div class="flex-1 text-[9px]">
@@ -62,20 +57,15 @@
             </div>
         </div>
 
-        <!-- Sudah Terima Dari -->
         <div class="flex items-start mb-1">
             <span class="w-24 text-[9px]">Sudah terima dari</span>
             <div class="flex-1 border-b border-dotted border-gray-500 text-[9px]">
                 {{ \Illuminate\Support\Str::title($payment->student?->name ?? '............................') }}
-                @if ($payment->student?->studentProfile?->classroom)
-                    ( {{ $payment->student->studentProfile->classroom->kelas }}
-                    {{-- {{ $payment->student->studentProfile->classroom->jenjang }} --}}
-                    {{ $payment->student->studentProfile->classroom->name }} )
+                @if ($payment->student?->studentProfile?->classroom) - {{ $payment->student->studentProfile->classroom->kelas }}{{ $payment->student->studentProfile->classroom->name }} 
                 @endif
             </div>
         </div>
 
-        <!-- Uang Sejumlah -->
         <div class="flex items-start mb-1">
             <span class="w-24 text-[9px]">Uang sejumlah</span>
             <div class="flex-1 border-b border-dotted border-gray-500 text-[9px] font-semibold">
@@ -83,15 +73,17 @@
             </div>
         </div>
 
-        <!-- Untuk Pembayaran -->
         <div class="flex items-start mb-1">
             <span class="w-24 text-[9px]">Untuk Pembayaran</span>
             <div class="flex-1 border-b border-dotted border-gray-500 text-[9px]">
-                {{ $payment->bill->nama_tagihan ? ucwords($payment->bill->nama_tagihan) : '........................................' }}
+                @if ($payment->bills && $payment->bills->count() > 0)
+                    {{ $payment->bills->pluck('nama_tagihan')->map(fn($n) => ucwords($n))->join(', ') }}
+                @else
+                    ........................................
+                @endif
             </div>
         </div>
 
-        <!-- Terbilang -->
         <div class="flex items-start mt-2">
             <span class="w-20 text-[9px]">Terbilang</span>
             <div class="flex-1 bg-gray-100 px-2 py-1 text-[9px] italic">
@@ -99,7 +91,6 @@
             </div>
         </div>
 
-        <!-- Tanda Tangan -->
         <div class="mt-4 flex justify-between">
             <div class="text-center text-[8px]">
                 <p>Penerima</p>
@@ -118,7 +109,6 @@
             window.print();
         };
     </script>
-
 </body>
 
 </html>

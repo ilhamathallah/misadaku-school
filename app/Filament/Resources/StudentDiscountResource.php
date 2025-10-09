@@ -32,7 +32,7 @@ class StudentDiscountResource extends Resource
         return $form
             ->schema([
                 TextInput::make('name')
-                    ->label('Discount Name')
+                    ->label('Nama Diskon')
                     ->required()
                     ->maxLength(255),
 

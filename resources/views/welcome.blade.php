@@ -169,7 +169,7 @@
                                 </a>
                             @else
                                 <a href="{{ route('login') }}"
-                                    class="inline-block px-5 py-1.5 rounded-md border border-transparent text-[#1b1b18] hover:border-[#19140035] hover:bg-[#f8f8f8] hover:shadow-md transition-all duration-200 dark:hover:border-[#3E3E3A] dark:hover:bg-[#2c2c2a] dark:text-white">
+                                    class="inline-block px-5 py-1.5 rounded-md border border-[#19140035] bg-gradient-to-r from-[#ffffff] to-[#f7f7f7] hover:border-[#1915014a] hover:shadow-md transition-all duration-200 dark:border-[#3E3E3A] dark:from-[#2c2c2a] dark:to-[#3e3e3a] dark:hover:border-[#62605b] dark:text-white">
                                     Log in
                                 </a>
 

@@ -13,7 +13,7 @@ class StudentsPerClassChart extends ChartWidget
     {
         $classrooms = Classroom::with('student')->get();
 
-        $labels = $classrooms->map(fn ($c) => "{$c->kelas} {$c->jenjang} {$c->name}");
+        $labels = $classrooms->map(fn ($c) => "{$c->kelas} {$c->name}");
 
         $maleCounts = $classrooms->map(fn ($c) => $c->student->where('gender', 'L')->count());
         $femaleCounts = $classrooms->map(fn ($c) => $c->student->where('gender', 'P')->count());
