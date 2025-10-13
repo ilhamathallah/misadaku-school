@@ -28,12 +28,12 @@ class StudentPanelProvider extends PanelProvider
             ->id('student')
             ->path('student')
             ->colors([
-                'primary' => Color::Amber,
+                'primary' => Color::Green,
             ])
             // untuk nama panel dan logo web
             ->brandName('Misadaku School')
             ->brandLogo(fn() => view('components.custom-brand'))
-            ->favicon(asset('storage/images/misadaqu.png'))
+            ->favicon(asset('storage/images/misadaku.png'))
             ->renderHook(
                 'panels::user-menu.before',
                 fn(): string => '<span class="mr-2 font-semibold text-gray-700 dark:text-white">' . ucwords(Auth::user()->name) . '</span>'

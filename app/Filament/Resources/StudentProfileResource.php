@@ -138,7 +138,12 @@ class StudentProfileResource extends Resource
                     ->label('Angkatan')
                     ->searchable()
                     ->sortable(),
-                ImageColumn::make('photo')->label('Foto')->disk('public')->circular()->height(50),
+                ImageColumn::make('photo')
+                    ->label('Foto')
+                    ->getStateUsing(fn($record) => $record->photo ? asset('storage/' . $record->photo) : null)
+                    ->circular()
+                    ->height(50),
+
                 BadgeColumn::make('is_active')->label('Status Siswa')->formatStateUsing(fn($state) => $state ? 'Aktif' : 'Tidak')->color(fn($state) => $state ? 'success' : 'danger')->searchable()->sortable(),
             ])
             ->filters([
@@ -146,7 +151,7 @@ class StudentProfileResource extends Resource
                     ->label('Kelas')
                     ->relationship('classroom', 'name', fn($query) => $query->orderBy('kelas')->orderBy('name'))
                     ->getOptionLabelFromRecordUsing(fn($record) => "{$record->kelas} {$record->name}"),
-                    
+
 
                 Tables\Filters\SelectFilter::make('gender')
                     ->label('Jenis Kelamin')

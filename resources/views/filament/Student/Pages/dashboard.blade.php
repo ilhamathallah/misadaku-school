@@ -26,24 +26,16 @@
     @endphp
 
     <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <!-- Profile Card -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <!-- Foto Profil -->
             <div class="md:col-span-1 flex">
                 <div
                     class="relative overflow-hidden bg-white dark:bg-gray-900 w-full shadow rounded-xl p-6 flex flex-col items-center justify-center hover:shadow-xl h-full">
                     <img src="{{ $studentProfile?->photo ? asset('storage/' . $studentProfile->photo) : asset('storage/images/misadaku.png') }}"
-                        alt="Foto Profil" class="bg-blue-900 shadow-md mb-4"
+                        alt="Foto Profil" class="bg-blue-900 shadow-md mb-4 rounded-full"
                         style="width: 120px; height: 120px; object-fit: cover; object-position: center;">
-
-                    {{-- <img src="{{ auth()->user()->profile_photo_url ?? 'https://ui-avatars.com/api/?name=' . auth()->user()->name }}"
-                        alt="Profile" class="rounded-full  shadow-md"
-                        style="width: 50px; height: 50px; object-fit: cover; object-position: center;"> --}}
-
                 </div>
             </div>
 
-            <!-- Informasi Siswa -->
             <div class="md:col-span-2 flex">
                 <div
                     class="relative overflow-hidden bg-white dark:bg-gray-900 w-full shadow rounded-xl p-6 hover:shadow-xl h-full">
@@ -71,7 +63,8 @@
                         <div>
                             <p class="font-semibold">Kelas</p>
                             <p>
-                                {{ $studentProfile?->classroom?->kelas }} {{ $studentProfile?->classroom?->jenjang }}
+                                {{ $studentProfile?->classroom?->kelas }} 
+                                {{-- {{ $studentProfile?->classroom?->jenjang }} --}}
                                 {{ $studentProfile?->classroom?->name }}
                             </p>
                         </div>
@@ -80,65 +73,6 @@
             </div>
         </div>
 
-        <!-- Financial Cards -->
-        {{-- <div class="col-span-1 md:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-6">
-            <!-- Total Pembayaran -->
-            <div
-                class="relative overflow-hidden bg-white dark:bg-gray-900 w-full shadow rounded-xl p-6 transition duration-300 hover:shadow-xl">
-                <h2 class="text-md font-bold text-gray-800 dark:text-gray-100 mb-2">Total Pembayaran Kamu</h2>
-                <p class="text-2xl font-bold text-green-600 dark:text-green-400">
-                    Rp {{ number_format($totalPembayaran, 0, ',', '.') }}
-                </p>
-            </div>
-
-            <!-- Tagihan Belum Dibayar -->
-            <div
-                class="relative overflow-hidden bg-white dark:bg-gray-900 w-full shadow rounded-xl p-6 transition duration-300 hover:shadow-xl">
-                <h2 class="text-md font-bold text-gray-800 dark:text-gray-100 mb-2">Tagihan Belum Dibayar</h2>
-                <p class="text-2xl font-bold text-red-600 dark:text-red-400">
-                    Rp {{ number_format($sisaTagihan, 0, ',', '.') }}
-                </p>
-            </div>
-        </div> --}}
     </div>
-
-    <!-- Chart Section -->
-    <!-- Riwayat Pembayaran dalam Card -->
-    {{-- <div class="mt-8 bg-white dark:bg-gray-900 shadow rounded-xl p-6 transition duration-300 hover:shadow-xl">
-        <h2 class="text-lg font-bold text-gray-800 dark:text-gray-100 mb-4">
-            Riwayat Pembayaran Bulanan
-        </h2>
-
-        @if ($studentPayments->count())
-            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                @foreach ($studentPayments as $payment)
-                    <div class="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg shadow-inner">
-                        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-                            <div class="space-y-1">
-                                <div class="text-sm font-medium text-gray-800 dark:text-gray-100">
-                                    {{ $payment->bill->nama_tagihan ?? '-' }}
-                                </div>
-                                <div class="text-xs text-gray-500 dark:text-gray-400">
-                                    No. Kwitansi: {{ $payment->receipt_number ?? '-' }}
-                                </div>
-                                <div class="text-xs text-gray-500 dark:text-gray-400">
-                                    Dibayar pada:
-                                    {{ \Carbon\Carbon::parse($payment->created_at)->translatedFormat('d F Y') }}
-                                </div>
-                            </div>
-
-                            <div class="text-sm font-semibold text-green-600 dark:text-green-400">
-                                Rp {{ number_format($payment->paid_amount, 0, ',', '.') }}
-                            </div>
-                        </div>
-                    </div>
-                @endforeach
-            </div>
-        @else
-            <p class="text-sm text-gray-500 dark:text-gray-400">
-                Belum ada pembayaran tercatat.
-            </p>
-        @endif
-    </div> --}}
 
 </x-filament::page>
